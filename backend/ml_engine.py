@@ -93,14 +93,14 @@ class FaceAnalyzer:
         
         return (left_ear + right_ear) / 2.0
 
-    def _get_eyebrow_raise(self, landmarks):
+    def _get_eyebrow_raise(self, landmarks, face_height):
         l_eye_top = landmarks.landmark[159]
         l_eyebrow = landmarks.landmark[105]
         r_eye_top = landmarks.landmark[386]
         r_eyebrow = landmarks.landmark[334]
         
-        left_dist = euclidean_distance(l_eye_top, l_eyebrow)
-        right_dist = euclidean_distance(r_eye_top, r_eyebrow)
+        left_dist = euclidean_distance(l_eye_top, l_eyebrow) / face_height
+        right_dist = euclidean_distance(r_eye_top, r_eyebrow) / face_height
         
         return (left_dist + right_dist) / 2.0, abs(left_dist - right_dist)
 
@@ -120,13 +120,14 @@ class FaceAnalyzer:
         mouth_width = euclidean_distance(left_corner, right_corner) / face_width
         mouth_open = self._get_mar(landmarks)
         eye_open = self._get_ear(landmarks)
-        brow_raise, brow_asymmetry = self._get_eyebrow_raise(landmarks)
+        brow_raise, brow_asymmetry = self._get_eyebrow_raise(landmarks, face_height)
 
         left_inner_brow = landmarks.landmark[105]
         right_inner_brow = landmarks.landmark[334]
         brow_distance = euclidean_distance(left_inner_brow, right_inner_brow) / face_width
         corner_drop = (((left_corner.y + right_corner.y) / 2.0) - mouth_center_y) / face_height
         lip_to_nose = (upper_lip.y - landmarks.landmark[2].y) / face_height
+        mouth_tension = mouth_width / max(mouth_open, 1e-6)
 
         return {
             "mouth_open": mouth_open,
@@ -137,6 +138,7 @@ class FaceAnalyzer:
             "brow_distance": brow_distance,
             "corner_drop": corner_drop,
             "lip_to_nose": lip_to_nose,
+            "mouth_tension": mouth_tension,
         }
 
     def _smooth_emoji(self, emoji):
@@ -153,6 +155,7 @@ class FaceAnalyzer:
         brow_distance = features["brow_distance"]
         corner_drop = features["corner_drop"]
         lip_to_nose = features["lip_to_nose"]
+        mouth_tension = features["mouth_tension"]
 
         is_surprised = (
             eye_open > 0.26
@@ -165,10 +168,13 @@ class FaceAnalyzer:
             and mouth_open < 0.28
         )
         is_angry = (
-            brow_raise < 0.082
-            and brow_distance < 0.46
-            and brow_asymmetry < 0.03
-            and mouth_open < 0.22
+            brow_raise < 0.075
+            and brow_distance < 0.34
+            and brow_asymmetry < 0.018
+            and eye_open < 0.245
+            and mouth_open < 0.18
+            and corner_drop > -0.01
+            and mouth_tension > 1.65
         )
         is_sad = (
             corner_drop > 0.004
