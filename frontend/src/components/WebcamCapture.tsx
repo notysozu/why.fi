@@ -10,6 +10,7 @@ import {
 const EMOJIS = ['happy', 'sad', 'surprise', 'neutral'] as const;
 const MAX_SCORE = 5;
 const FALLBACK_MEME_SOUND_MS = 1400;
+const SNAP_COOLDOWN_MS = 5000;
 
 const browserHost = window.location.hostname || 'localhost';
 const backendHttpBase = `http://${browserHost}:8001`;
@@ -87,7 +88,10 @@ const WebcamCapture: React.FC = () => {
   const memeAudioRef = useRef<HTMLAudioElement | null>(null);
   const activeMemeRef = useRef<MemeScene | null>(null);
   const fallbackSoundTimerRef = useRef<number | null>(null);
+  const playbackStopTimerRef = useRef<number | null>(null);
   const playbackRequestRef = useRef(0);
+  const cooldownTimerRef = useRef<number | null>(null);
+  const cooldownRef = useRef(false);
 
   const [error, setError] = useState<string | null>(null);
   const [currentTarget, setCurrentTarget] = useState<EmojiName>('happy');
@@ -101,6 +105,7 @@ const WebcamCapture: React.FC = () => {
   const [isFree, setIsFree] = useState(false);
   const [activeMeme, setActiveMeme] = useState<MemeScene | null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
+  const [isCooldown, setIsCooldown] = useState(false);
 
   useEffect(() => {
     targetRef.current = currentTarget;
@@ -118,12 +123,21 @@ const WebcamCapture: React.FC = () => {
     activeMemeRef.current = activeMeme;
   }, [activeMeme]);
 
+  useEffect(() => {
+    cooldownRef.current = isCooldown;
+  }, [isCooldown]);
+
   const stopMemePlayback = () => {
     playbackRequestRef.current += 1;
 
     if (fallbackSoundTimerRef.current) {
       window.clearTimeout(fallbackSoundTimerRef.current);
       fallbackSoundTimerRef.current = null;
+    }
+
+    if (playbackStopTimerRef.current) {
+      window.clearTimeout(playbackStopTimerRef.current);
+      playbackStopTimerRef.current = null;
     }
 
     if (memeAudioRef.current) {
@@ -197,7 +211,11 @@ const WebcamCapture: React.FC = () => {
     oscillator.stop(now + durationMs / 1000);
   };
 
-  const playFallbackMemeSound = (expression: MemeExpression, durationMs = FALLBACK_MEME_SOUND_MS) => {
+  const playFallbackMemeSound = (
+    expression: MemeExpression,
+    durationMs = FALLBACK_MEME_SOUND_MS,
+    shouldLoop = true,
+  ) => {
     const audioContext = audioContextRef.current;
     if (!audioContext) {
       return;
@@ -236,9 +254,11 @@ const WebcamCapture: React.FC = () => {
     primary.stop(endTime);
     harmonic.stop(endTime);
 
-    fallbackSoundTimerRef.current = window.setTimeout(() => {
-      playFallbackMemeSound(expression, durationMs);
-    }, Math.max(500, durationMs - 120));
+    if (shouldLoop) {
+      fallbackSoundTimerRef.current = window.setTimeout(() => {
+        playFallbackMemeSound(expression, durationMs, shouldLoop);
+      }, Math.max(500, durationMs - 120));
+    }
   };
 
   const playSuccessChime = () => {
@@ -252,7 +272,7 @@ const WebcamCapture: React.FC = () => {
     window.setTimeout(() => playTone(780, 340, 'sine', 0.05), 280);
   };
 
-  const playMemeSceneAudio = async (scene: MemeScene) => {
+  const playMemeSceneAudio = async (scene: MemeScene, durationMs?: number) => {
     stopMemePlayback();
     const requestId = playbackRequestRef.current;
     const isAudioReady = await unlockAudio();
@@ -265,7 +285,7 @@ const WebcamCapture: React.FC = () => {
       const audio = new Audio(scene.audioSrc);
       audio.preload = 'auto';
       audio.volume = 0.72;
-      audio.loop = true;
+      audio.loop = durationMs === undefined;
       memeAudioRef.current = audio;
 
       try {
@@ -274,6 +294,15 @@ const WebcamCapture: React.FC = () => {
           audio.pause();
           audio.currentTime = 0;
           return;
+        }
+        if (durationMs !== undefined) {
+          playbackStopTimerRef.current = window.setTimeout(() => {
+            if (memeAudioRef.current === audio) {
+              audio.pause();
+              audio.currentTime = 0;
+              memeAudioRef.current = null;
+            }
+          }, durationMs);
         }
         setAudioBlocked(false);
         return;
@@ -288,7 +317,7 @@ const WebcamCapture: React.FC = () => {
     }
 
     if (isAudioReady && requestId === playbackRequestRef.current) {
-      playFallbackMemeSound(scene.expression);
+      playFallbackMemeSound(scene.expression, durationMs ?? FALLBACK_MEME_SOUND_MS, durationMs === undefined);
     }
   };
 
@@ -329,6 +358,10 @@ const WebcamCapture: React.FC = () => {
 
     return () => {
       stopMemePlayback();
+      if (cooldownTimerRef.current) {
+        window.clearTimeout(cooldownTimerRef.current);
+        cooldownTimerRef.current = null;
+      }
       if (audioContextRef.current) {
         audioContextRef.current.close().catch(() => undefined);
         audioContextRef.current = null;
@@ -338,7 +371,7 @@ const WebcamCapture: React.FC = () => {
 
   useEffect(() => {
     const retryAudio = () => {
-      if (!audioBlocked || !activeMemeRef.current || completeRef.current || isFree) {
+      if (!audioBlocked || !activeMemeRef.current || completeRef.current || isFree || cooldownRef.current) {
         return;
       }
 
@@ -355,7 +388,7 @@ const WebcamCapture: React.FC = () => {
   }, [audioBlocked, isFree]);
 
   useEffect(() => {
-    if (isFree || completeRef.current) {
+    if (isFree || completeRef.current || cooldownRef.current) {
       return;
     }
 
@@ -369,10 +402,10 @@ const WebcamCapture: React.FC = () => {
     } catch {
       // Keep running if local meme assets are incomplete.
     }
-  }, [currentTarget, isFree]);
+  }, [currentTarget, isCooldown, isFree]);
 
   useEffect(() => {
-    if (!activeMeme || isFree || completeRef.current) {
+    if (!activeMeme || isFree || completeRef.current || cooldownRef.current) {
       return;
     }
 
@@ -381,7 +414,7 @@ const WebcamCapture: React.FC = () => {
     return () => {
       stopMemePlayback();
     };
-  }, [activeMeme, isFree]);
+  }, [activeMeme, isCooldown, isFree]);
 
   const renderMemeCanvas = (
     scene: MemeScene | null,
@@ -554,18 +587,39 @@ const WebcamCapture: React.FC = () => {
       setGameScore(nextScore);
       playSuccessChime();
 
-      if (nextScore >= MAX_SCORE) {
-        setStatusMessage('Judgment complete. Reviewing your performance...');
-        setIsComplete(true);
-        stopMemePlayback();
-        stopStreaming();
-        playCompletionChime();
-        return;
+      const nextTarget = getRandomTarget(matchedEmoji);
+      setIsCooldown(true);
+
+      if (cooldownTimerRef.current) {
+        window.clearTimeout(cooldownTimerRef.current);
+        cooldownTimerRef.current = null;
       }
 
-      const nextTarget = getRandomTarget(matchedEmoji);
-      setCurrentTarget(nextTarget);
-      setStatusMessage(`Captured. New order: match ${getEmojiChar(nextTarget)}.`);
+      if (isMemeExpression(matchedEmoji)) {
+        const cooldownScene = getMemeSceneForExpression(matchedEmoji, activeMemeRef.current?.imageSrc);
+        setActiveMeme(cooldownScene);
+        void playMemeSceneAudio(cooldownScene, SNAP_COOLDOWN_MS);
+      } else {
+        stopMemePlayback();
+      }
+
+      setStatusMessage(`Captured ${getEmojiChar(matchedEmoji)}. Cooling down for 5 seconds...`);
+
+      cooldownTimerRef.current = window.setTimeout(() => {
+        setIsCooldown(false);
+
+        if (nextScore >= MAX_SCORE) {
+          setStatusMessage('Judgment complete. Reviewing your performance...');
+          setIsComplete(true);
+          stopMemePlayback();
+          stopStreaming();
+          playCompletionChime();
+          return;
+        }
+
+        setCurrentTarget(nextTarget);
+        setStatusMessage(`Captured. New order: match ${getEmojiChar(nextTarget)}.`);
+      }, SNAP_COOLDOWN_MS);
     } catch (captureError) {
       const message = captureError instanceof Error ? captureError.message : 'Unknown capture error';
       setError(`Snapshot workflow failed: ${message}`);
@@ -589,7 +643,7 @@ const WebcamCapture: React.FC = () => {
         setCurrentEmoji(nextEmoji);
         syncMemeToExpression(nextEmoji);
 
-        if (completeRef.current || savingCaptureRef.current || isFree) {
+        if (completeRef.current || savingCaptureRef.current || isFree || cooldownRef.current) {
           return;
         }
 
@@ -708,6 +762,10 @@ const WebcamCapture: React.FC = () => {
 
   const handleQuit = async () => {
     stopMemePlayback();
+    if (cooldownTimerRef.current) {
+      window.clearTimeout(cooldownTimerRef.current);
+      cooldownTimerRef.current = null;
+    }
 
     if (document.fullscreenElement && document.exitFullscreen) {
       await document.exitFullscreen().catch(() => undefined);
