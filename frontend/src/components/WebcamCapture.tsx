@@ -1,0 +1,674 @@
+import React, { useEffect, useRef, useState } from 'react';
+
+const EMOJIS = ['happy', 'sad', 'angry', 'surprise', 'neutral'] as const;
+const MAX_SCORE = 5;
+
+const browserHost = window.location.hostname || 'localhost';
+const backendHttpBase = `http://${browserHost}:8001`;
+const backendWsBase = `ws://${browserHost}:8001`;
+
+type EmojiName = (typeof EMOJIS)[number];
+
+type WhyMeter = {
+  why_score: number;
+  boredom: number;
+  confusion: number;
+  dread: number;
+};
+
+type CaptureRecord = {
+  expression: EmojiName;
+  emojiChar: string;
+  imageUrl: string;
+  whyMeter: WhyMeter;
+};
+
+const DEFAULT_METER: WhyMeter = {
+  why_score: 0,
+  boredom: 0,
+  confusion: 0,
+  dread: 0,
+};
+
+const getEmojiChar = (name: string) => {
+  switch (name) {
+    case 'happy':
+      return '😊';
+    case 'sad':
+      return '😢';
+    case 'angry':
+      return '😠';
+    case 'surprise':
+      return '😲';
+    default:
+      return '😐';
+  }
+};
+
+const getEmojiLabel = (name: string) => {
+  if (name === 'none') {
+    return 'No face';
+  }
+
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
+const getMemePalette = (emoji: string) => {
+  switch (emoji) {
+    case 'happy':
+      return ['#ffd166', '#ef476f', '#f9844a'];
+    case 'sad':
+      return ['#4d7cfe', '#1d3557', '#8ecae6'];
+    case 'angry':
+      return ['#d90429', '#2b2d42', '#ef233c'];
+    case 'surprise':
+      return ['#90be6d', '#577590', '#f9c74f'];
+    default:
+      return ['#adb5bd', '#495057', '#ced4da'];
+  }
+};
+
+const getRandomTarget = (exclude?: string): EmojiName => {
+  let target = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+
+  while (exclude && target === exclude) {
+    target = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+  }
+
+  return target;
+};
+
+const WebcamCapture: React.FC = () => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const frameCanvasRef = useRef<HTMLCanvasElement>(null);
+  const memeCanvasRef = useRef<HTMLCanvasElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const sendIntervalRef = useRef<number | null>(null);
+  const scoreRef = useRef(0);
+  const targetRef = useRef<EmojiName>('happy');
+  const currentEmojiRef = useRef('none');
+  const completeRef = useRef(false);
+  const savingCaptureRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioLoopRef = useRef<number | null>(null);
+
+  const [error, setError] = useState<string | null>(null);
+  const [currentTarget, setCurrentTarget] = useState<EmojiName>('happy');
+  const [currentEmoji, setCurrentEmoji] = useState<string>('none');
+  const [gameScore, setGameScore] = useState(0);
+  const [statusMessage, setStatusMessage] = useState('Match the target face.');
+  const [whyMeter, setWhyMeter] = useState<WhyMeter>(DEFAULT_METER);
+  const [captures, setCaptures] = useState<CaptureRecord[]>([]);
+  const [isTrapped, setIsTrapped] = useState(false);
+  const [isComplete, setIsComplete] = useState(false);
+  const [isFree, setIsFree] = useState(false);
+
+  useEffect(() => {
+    targetRef.current = currentTarget;
+  }, [currentTarget]);
+
+  useEffect(() => {
+    currentEmojiRef.current = currentEmoji;
+  }, [currentEmoji]);
+
+  useEffect(() => {
+    scoreRef.current = gameScore;
+  }, [gameScore]);
+
+  useEffect(() => {
+    completeRef.current = isComplete;
+  }, [isComplete]);
+
+  const stopAudioLoop = () => {
+    if (audioLoopRef.current) {
+      window.clearInterval(audioLoopRef.current);
+      audioLoopRef.current = null;
+    }
+  };
+
+  const playTone = (frequency: number, durationMs: number, type: OscillatorType, volume = 0.03) => {
+    const audioContext = audioContextRef.current;
+    if (!audioContext) {
+      return;
+    }
+
+    const now = audioContext.currentTime;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, now);
+    gainNode.gain.setValueAtTime(volume, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + durationMs / 1000);
+  };
+
+  const playLoopPulse = () => {
+    const frequencyMap: Record<string, number> = {
+      happy: 520,
+      sad: 220,
+      angry: 160,
+      surprise: 640,
+      neutral: 310,
+      none: 120,
+    };
+
+    const targetFrequency = frequencyMap[targetRef.current] ?? 300;
+    const expressionFrequency = frequencyMap[currentEmojiRef.current] ?? 150;
+
+    playTone(targetFrequency, 220, 'triangle', 0.035);
+    window.setTimeout(() => playTone(expressionFrequency, 140, 'square', 0.02), 120);
+  };
+
+  const playSuccessChime = () => {
+    playTone(520, 160, 'sine', 0.05);
+    window.setTimeout(() => playTone(780, 220, 'triangle', 0.05), 120);
+  };
+
+  const playCompletionChime = () => {
+    playTone(390, 220, 'triangle', 0.05);
+    window.setTimeout(() => playTone(520, 260, 'sine', 0.05), 120);
+    window.setTimeout(() => playTone(780, 340, 'sine', 0.05), 280);
+  };
+
+  const stopStreaming = () => {
+    if (sendIntervalRef.current) {
+      window.clearInterval(sendIntervalRef.current);
+      sendIntervalRef.current = null;
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+    if (!AudioContextCtor) {
+      return;
+    }
+
+    audioContextRef.current = new AudioContextCtor();
+    audioContextRef.current.resume().catch(() => undefined);
+
+    audioLoopRef.current = window.setInterval(() => {
+      if (!completeRef.current && !isFree) {
+        playLoopPulse();
+      }
+    }, 1400);
+
+    return () => {
+      stopAudioLoop();
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => undefined);
+        audioContextRef.current = null;
+      }
+    };
+  }, [isFree]);
+
+  const drawMemeCanvas = () => {
+    const canvas = memeCanvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return;
+    }
+
+    const focusEmoji = isComplete ? captures[captures.length - 1]?.expression ?? currentTarget : currentTarget;
+    const [colorA, colorB, colorC] = getMemePalette(focusEmoji);
+    const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, colorA);
+    gradient.addColorStop(0.5, colorB);
+    gradient.addColorStop(1, colorC);
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    context.fillStyle = 'rgba(255, 255, 255, 0.14)';
+    context.beginPath();
+    context.arc(72, 68, 58, 0, Math.PI * 2);
+    context.fill();
+    context.beginPath();
+    context.arc(310, 220, 90, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = '#111111';
+    context.font = '900 26px Impact, Haettenschweiler, Arial Narrow Bold, sans-serif';
+    context.textAlign = 'center';
+    context.fillText('MAKE THE JUDGE BELIEVE YOU', canvas.width / 2, 44);
+
+    context.fillStyle = '#fff8dc';
+    context.font = '900 110px "Trebuchet MS", sans-serif';
+    context.fillText(getEmojiChar(focusEmoji), canvas.width / 2, 180);
+
+    context.fillStyle = '#111111';
+    context.font = '900 24px Impact, Haettenschweiler, Arial Narrow Bold, sans-serif';
+    context.fillText(`TARGET: ${focusEmoji.toUpperCase()}`, canvas.width / 2, 234);
+
+    context.font = '700 18px "Trebuchet MS", sans-serif';
+    const footer = isComplete
+      ? `CAPTURED ${captures.length} / ${MAX_SCORE} EXPRESSIONS`
+      : `DETECTED: ${currentEmoji.toUpperCase()}`;
+    context.fillText(footer, canvas.width / 2, 272);
+  };
+
+  useEffect(() => {
+    drawMemeCanvas();
+  }, [currentEmoji, currentTarget, captures, isComplete]);
+
+  const captureFrame = () => {
+    if (!videoRef.current || !frameCanvasRef.current) {
+      return null;
+    }
+
+    const context = frameCanvasRef.current.getContext('2d');
+    if (!context) {
+      return null;
+    }
+
+    context.drawImage(videoRef.current, 0, 0, frameCanvasRef.current.width, frameCanvasRef.current.height);
+    return frameCanvasRef.current.toDataURL('image/jpeg', 0.85);
+  };
+
+  const saveCapture = async (image: string, expression: EmojiName, score: number) => {
+    const response = await fetch(`${backendHttpBase}/captures`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        image,
+        expression,
+        score,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Capture save failed with status ${response.status}`);
+    }
+
+    return response.json() as Promise<{ filename: string; url: string }>;
+  };
+
+  const finalizeMatch = async (matchedEmoji: EmojiName, currentWhyMeter: WhyMeter) => {
+    if (savingCaptureRef.current || completeRef.current) {
+      return;
+    }
+
+    savingCaptureRef.current = true;
+    setStatusMessage(`Expression locked. Capturing ${getEmojiChar(matchedEmoji)} evidence...`);
+
+    try {
+      const frame = captureFrame();
+
+      if (!frame) {
+        throw new Error('Could not capture webcam frame');
+      }
+
+      const nextScore = scoreRef.current + 1;
+      const saved = await saveCapture(frame, matchedEmoji, nextScore);
+
+      setCaptures((previous) => [
+        ...previous,
+        {
+          expression: matchedEmoji,
+          emojiChar: getEmojiChar(matchedEmoji),
+          imageUrl: saved.url,
+          whyMeter: currentWhyMeter,
+        },
+      ]);
+      setGameScore(nextScore);
+      playSuccessChime();
+
+      if (nextScore >= MAX_SCORE) {
+        setStatusMessage('Judgment complete. Reviewing your performance...');
+        setIsComplete(true);
+        stopAudioLoop();
+        stopStreaming();
+        playCompletionChime();
+        return;
+      }
+
+      const nextTarget = getRandomTarget(matchedEmoji);
+      setCurrentTarget(nextTarget);
+      setStatusMessage(`Captured. New order: match ${getEmojiChar(nextTarget)}.`);
+    } catch (captureError) {
+      const message = captureError instanceof Error ? captureError.message : 'Unknown capture error';
+      setError(`Snapshot workflow failed: ${message}`);
+      setStatusMessage('Capture failed. Match the face again to retry.');
+    } finally {
+      savingCaptureRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    const socket = new WebSocket(`${backendWsBase}/ws`);
+    wsRef.current = socket;
+
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as { emoji?: string; why_meter?: WhyMeter };
+        const nextWhyMeter = payload.why_meter ?? DEFAULT_METER;
+        const nextEmoji = payload.emoji ?? 'none';
+
+        setWhyMeter(nextWhyMeter);
+        setCurrentEmoji(nextEmoji);
+
+        if (completeRef.current || savingCaptureRef.current || isFree) {
+          return;
+        }
+
+        if (nextEmoji === targetRef.current) {
+          setStatusMessage(`Match confirmed for ${getEmojiChar(targetRef.current)}.`);
+          void finalizeMatch(targetRef.current, nextWhyMeter);
+        } else {
+          setStatusMessage(`Match target ${getEmojiChar(targetRef.current)}.`);
+        }
+      } catch {
+        // Ignore malformed socket payloads.
+      }
+    };
+
+    return () => {
+      socket.close();
+      wsRef.current = null;
+    };
+  }, [isFree]);
+
+  useEffect(() => {
+    const startWebcam = async () => {
+      try {
+        if (isFree) {
+          return;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        streamRef.current = stream;
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+
+        sendIntervalRef.current = window.setInterval(() => {
+          if (
+            completeRef.current ||
+            !videoRef.current ||
+            !frameCanvasRef.current ||
+            wsRef.current?.readyState !== WebSocket.OPEN
+          ) {
+            return;
+          }
+
+          const context = frameCanvasRef.current.getContext('2d');
+          if (!context) {
+            return;
+          }
+
+          context.drawImage(videoRef.current, 0, 0, frameCanvasRef.current.width, frameCanvasRef.current.height);
+          const dataUrl = frameCanvasRef.current.toDataURL('image/jpeg', 0.5);
+          wsRef.current.send(dataUrl);
+        }, 120);
+      } catch (webcamError) {
+        const message = webcamError instanceof Error ? webcamError.message : 'Unknown webcam error';
+        setError(`Failed to access webcam: ${message}`);
+      }
+    };
+
+    void startWebcam();
+
+    return () => {
+      stopStreaming();
+    };
+  }, [isFree]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && !completeRef.current && !isFree) {
+        setIsTrapped(true);
+      }
+    };
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      const blockedFullscreenExit =
+        event.key === 'Escape' ||
+        event.key === 'F11' ||
+        ((event.ctrlKey || event.metaKey) && ['w', 'W', 'r', 'R'].includes(event.key));
+
+      if (blockedFullscreenExit && !completeRef.current && !isFree) {
+        event.preventDefault();
+        setIsTrapped(true);
+      }
+    };
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!completeRef.current && !isFree) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('keydown', handleKeydown);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('keydown', handleKeydown);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isFree]);
+
+  const handleReturnToFullscreen = async () => {
+    try {
+      await document.documentElement.requestFullscreen();
+      setIsTrapped(false);
+      audioContextRef.current?.resume().catch(() => undefined);
+    } catch {
+      setError('Could not restore fullscreen mode.');
+    }
+  };
+
+  const handleQuit = async () => {
+    stopAudioLoop();
+
+    if (document.fullscreenElement && document.exitFullscreen) {
+      await document.exitFullscreen().catch(() => undefined);
+    }
+
+    setIsFree(true);
+  };
+
+  const averageWhyScore = captures.length
+    ? Math.round(captures.reduce((total, capture) => total + capture.whyMeter.why_score, 0) / captures.length)
+    : Math.round(whyMeter.why_score);
+
+  const averageBoredom = captures.length
+    ? Math.round(captures.reduce((total, capture) => total + capture.whyMeter.boredom, 0) / captures.length)
+    : Math.round(whyMeter.boredom);
+
+  const averageConfusion = captures.length
+    ? Math.round(captures.reduce((total, capture) => total + capture.whyMeter.confusion, 0) / captures.length)
+    : Math.round(whyMeter.confusion);
+
+  const averageDread = captures.length
+    ? Math.round(captures.reduce((total, capture) => total + capture.whyMeter.dread, 0) / captures.length)
+    : Math.round(whyMeter.dread);
+
+  const liveMetrics = [
+    { label: 'Boredom', value: `${Math.round(whyMeter.boredom)}%` },
+    { label: 'Confusion', value: `${Math.round(whyMeter.confusion)}%` },
+    { label: 'Existential Dread', value: `${Math.round(whyMeter.dread)}%` },
+    { label: 'Detected Face', value: `${getEmojiChar(currentEmoji)} ${getEmojiLabel(currentEmoji)}` },
+  ];
+
+  if (isFree) {
+    return (
+      <div className="splash-screen">
+        <div className="splash-content">
+          <h1>YOU ARE FREE.</h1>
+          <p>The simulation has ended. Your captured evidence remains on the server.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isComplete) {
+    return (
+      <div className="results-screen">
+        <div className="results-panel">
+          <h2>Final Judgment</h2>
+          <p className="results-summary">
+            Five expressions survived inspection. Average Why score: {averageWhyScore}%.
+          </p>
+
+          <div className="metrics-grid">
+            <div className="metric-card">
+              <span>Why</span>
+              <strong>{averageWhyScore}%</strong>
+            </div>
+            <div className="metric-card">
+              <span>Boredom</span>
+              <strong>{averageBoredom}%</strong>
+            </div>
+            <div className="metric-card">
+              <span>Confusion</span>
+              <strong>{averageConfusion}%</strong>
+            </div>
+            <div className="metric-card">
+              <span>Dread</span>
+              <strong>{averageDread}%</strong>
+            </div>
+            <div className="metric-card">
+              <span>Last Face</span>
+              <strong>{getEmojiChar(currentEmoji)} {getEmojiLabel(currentEmoji)}</strong>
+            </div>
+          </div>
+
+          <div className="capture-grid">
+            {captures.map((capture, index) => (
+              <article className="capture-card" key={`${capture.expression}-${index}`}>
+                <img src={capture.imageUrl} alt={`${capture.expression} capture ${index + 1}`} />
+                <div className="capture-card-body">
+                  <h3>
+                    {capture.emojiChar} {capture.expression}
+                  </h3>
+                  <p>Why {Math.round(capture.whyMeter.why_score)}%</p>
+                  <p>B {Math.round(capture.whyMeter.boredom)} / C {Math.round(capture.whyMeter.confusion)} / D {Math.round(capture.whyMeter.dread)}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <button className="quit-btn" onClick={() => void handleQuit()}>
+            EXIT SIMULATION
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="webcam-shell">
+      {error ? (
+        <p className="error">{error}</p>
+      ) : null}
+
+      <div className="overlay-container">
+        <div className="video-stage">
+          <div className="stage-summary">
+            <div className="summary-pill">
+              <span>Step</span>
+              <strong>{gameScore + 1} / {MAX_SCORE}</strong>
+            </div>
+            <div className="summary-pill">
+              <span>Target</span>
+              <strong>{getEmojiChar(currentTarget)} {getEmojiLabel(currentTarget)}</strong>
+            </div>
+            <div className="summary-pill">
+              <span>Why</span>
+              <strong>{Math.round(whyMeter.why_score)}%</strong>
+            </div>
+          </div>
+          <video ref={videoRef} autoPlay playsInline muted className="video-feed" />
+          <div className="status-banner">{statusMessage}</div>
+          <div className="why-meter-container">
+            <div className="why-meter-fill" style={{ width: `${whyMeter.why_score}%` }} />
+          </div>
+        </div>
+
+        <div className="side-panel">
+          <section className="panel-section">
+            <div className="panel-heading">
+              <h3>Live Analysis</h3>
+              <p>Five expressions, cleaner signals, less guesswork.</p>
+            </div>
+            <div className="live-metrics-grid">
+              {liveMetrics.map((metric) => (
+                <article className="live-metric-card" key={metric.label}>
+                  <span>{metric.label}</span>
+                  <strong>{metric.value}</strong>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel-section">
+            <div className="panel-heading">
+              <h3>Meme Board</h3>
+              <p>The target and detected face stay visible here.</p>
+            </div>
+            <canvas ref={memeCanvasRef} width={420} height={300} className="meme-canvas" />
+          </section>
+
+          <section className="panel-section">
+            <div className="panel-heading">
+              <h3>Approved Photos</h3>
+              <p>Captured matches from each completed step.</p>
+            </div>
+            <div className="capture-strip">
+            {captures.length === 0 ? (
+              <p>No approved face captures yet.</p>
+            ) : (
+              captures.map((capture, index) => (
+                <figure key={`${capture.expression}-${index}`} className="capture-tile">
+                  <img
+                    className="capture-thumb"
+                    src={capture.imageUrl}
+                    alt={`${capture.expression} thumbnail ${index + 1}`}
+                  />
+                  <figcaption>{capture.emojiChar} {getEmojiLabel(capture.expression)}</figcaption>
+                </figure>
+              ))
+            )}
+            </div>
+          </section>
+          </div>
+
+        <canvas ref={frameCanvasRef} width={320} height={240} style={{ display: 'none' }} />
+
+        {isTrapped ? (
+          <div className="trap-warning">
+            <h1>DO NOT ESCAPE</h1>
+            <p>The judge requires fullscreen compliance.</p>
+            <button className="enter-btn" onClick={() => void handleReturnToFullscreen()}>
+              RETURN TO FULLSCREEN
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
+export default WebcamCapture;
