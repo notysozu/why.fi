@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#4d7cfe"/>
+      <stop offset="55%" stop-color="#1d3557"/>
+      <stop offset="100%" stop-color="#8ecae6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <circle cx="170" cy="620" r="120" fill="#ffffff" fill-opacity=".14"/>
+  <circle cx="1040" cy="140" r="100" fill="#ffffff" fill-opacity=".18"/>
+  <text x="600" y="130" fill="#f1f6ff" font-family="Impact, Arial Black, sans-serif" font-size="84" text-anchor="middle">SAD MEME SLOT</text>
+  <text x="600" y="390" fill="#f1f6ff" font-family="Trebuchet MS, Arial, sans-serif" font-size="260" font-weight="700" text-anchor="middle">:(</text>
+  <text x="600" y="520" fill="#f1f6ff" font-family="Impact, Arial Black, sans-serif" font-size="64" text-anchor="middle">DROP SAD IMAGE FILES HERE</text>
+  <text x="600" y="625" fill="#dbeafe" font-family="Trebuchet MS, Arial, sans-serif" font-size="46" text-anchor="middle">Matching audio goes in src/assets/meme-audio/sad</text>
+</svg>

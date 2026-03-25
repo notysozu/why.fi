@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800">
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#90be6d"/>
+      <stop offset="55%" stop-color="#577590"/>
+      <stop offset="100%" stop-color="#f9c74f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <circle cx="180" cy="150" r="90" fill="#fffbe6" fill-opacity=".22"/>
+  <circle cx="1000" cy="620" r="130" fill="#fffbe6" fill-opacity=".2"/>
+  <text x="600" y="130" fill="#111111" font-family="Impact, Arial Black, sans-serif" font-size="84" text-anchor="middle">SURPRISE MEME SLOT</text>
+  <text x="600" y="390" fill="#fffef2" font-family="Trebuchet MS, Arial, sans-serif" font-size="260" font-weight="700" text-anchor="middle">:O</text>
+  <text x="600" y="520" fill="#111111" font-family="Impact, Arial Black, sans-serif" font-size="64" text-anchor="middle">DROP SURPRISE IMAGE FILES HERE</text>
+  <text x="600" y="625" fill="#fff8ea" font-family="Trebuchet MS, Arial, sans-serif" font-size="46" text-anchor="middle">Matching audio goes in src/assets/meme-audio/surprise</text>
+</svg>

@@ -1,7 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
+import {
+  getRandomMemeScene,
+  getMemePalette,
+  getMemeTitle,
+  type MemeExpression,
+  type MemeScene,
+} from '../data/memeMedia';
 
 const EMOJIS = ['happy', 'sad', 'angry', 'surprise', 'neutral'] as const;
 const MAX_SCORE = 5;
+const MEME_DURATION_MS = 5000;
 
 const browserHost = window.location.hostname || 'localhost';
 const backendHttpBase = `http://${browserHost}:8001`;
@@ -53,21 +61,6 @@ const getEmojiLabel = (name: string) => {
   return name.charAt(0).toUpperCase() + name.slice(1);
 };
 
-const getMemePalette = (emoji: string) => {
-  switch (emoji) {
-    case 'happy':
-      return ['#ffd166', '#ef476f', '#f9844a'];
-    case 'sad':
-      return ['#4d7cfe', '#1d3557', '#8ecae6'];
-    case 'angry':
-      return ['#d90429', '#2b2d42', '#ef233c'];
-    case 'surprise':
-      return ['#90be6d', '#577590', '#f9c74f'];
-    default:
-      return ['#adb5bd', '#495057', '#ced4da'];
-  }
-};
-
 const getRandomTarget = (exclude?: string): EmojiName => {
   let target = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
 
@@ -91,7 +84,10 @@ const WebcamCapture: React.FC = () => {
   const completeRef = useRef(false);
   const savingCaptureRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioLoopRef = useRef<number | null>(null);
+  const memeRotationRef = useRef<number | null>(null);
+  const memeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const memeStopTimeoutRef = useRef<number | null>(null);
+  const activeMemeRef = useRef<MemeScene | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [currentTarget, setCurrentTarget] = useState<EmojiName>('happy');
@@ -103,6 +99,7 @@ const WebcamCapture: React.FC = () => {
   const [isTrapped, setIsTrapped] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [isFree, setIsFree] = useState(false);
+  const [activeMeme, setActiveMeme] = useState<MemeScene | null>(null);
 
   useEffect(() => {
     targetRef.current = currentTarget;
@@ -120,11 +117,30 @@ const WebcamCapture: React.FC = () => {
     completeRef.current = isComplete;
   }, [isComplete]);
 
-  const stopAudioLoop = () => {
-    if (audioLoopRef.current) {
-      window.clearInterval(audioLoopRef.current);
-      audioLoopRef.current = null;
+  useEffect(() => {
+    activeMemeRef.current = activeMeme;
+  }, [activeMeme]);
+
+  const stopMemePlayback = () => {
+    if (memeStopTimeoutRef.current) {
+      window.clearTimeout(memeStopTimeoutRef.current);
+      memeStopTimeoutRef.current = null;
     }
+
+    if (memeAudioRef.current) {
+      memeAudioRef.current.pause();
+      memeAudioRef.current.currentTime = 0;
+      memeAudioRef.current = null;
+    }
+  };
+
+  const stopMemeRotation = () => {
+    if (memeRotationRef.current) {
+      window.clearInterval(memeRotationRef.current);
+      memeRotationRef.current = null;
+    }
+
+    stopMemePlayback();
   };
 
   const playTone = (frequency: number, durationMs: number, type: OscillatorType, volume = 0.03) => {
@@ -148,21 +164,45 @@ const WebcamCapture: React.FC = () => {
     oscillator.stop(now + durationMs / 1000);
   };
 
-  const playLoopPulse = () => {
-    const frequencyMap: Record<string, number> = {
-      happy: 520,
-      sad: 220,
-      angry: 160,
-      surprise: 640,
-      neutral: 310,
-      none: 120,
+  const playFallbackMemeSound = (expression: MemeExpression, durationMs = MEME_DURATION_MS) => {
+    const audioContext = audioContextRef.current;
+    if (!audioContext) {
+      return;
+    }
+
+    const config: Record<
+      MemeExpression,
+      { frequency: number; harmonic: number; type: OscillatorType; harmonicType: OscillatorType }
+    > = {
+      happy: { frequency: 440, harmonic: 660, type: 'triangle', harmonicType: 'sine' },
+      sad: { frequency: 196, harmonic: 294, type: 'sine', harmonicType: 'triangle' },
+      angry: { frequency: 130, harmonic: 195, type: 'sawtooth', harmonicType: 'square' },
+      surprise: { frequency: 523, harmonic: 784, type: 'square', harmonicType: 'triangle' },
     };
 
-    const targetFrequency = frequencyMap[targetRef.current] ?? 300;
-    const expressionFrequency = frequencyMap[currentEmojiRef.current] ?? 150;
+    const now = audioContext.currentTime;
+    const endTime = now + durationMs / 1000;
+    const primary = audioContext.createOscillator();
+    const harmonic = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
 
-    playTone(targetFrequency, 220, 'triangle', 0.035);
-    window.setTimeout(() => playTone(expressionFrequency, 140, 'square', 0.02), 120);
+    primary.type = config[expression].type;
+    primary.frequency.setValueAtTime(config[expression].frequency, now);
+    harmonic.type = config[expression].harmonicType;
+    harmonic.frequency.setValueAtTime(config[expression].harmonic, now);
+
+    gainNode.gain.setValueAtTime(0.0001, now);
+    gainNode.gain.linearRampToValueAtTime(0.045, now + 0.08);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
+
+    primary.connect(gainNode);
+    harmonic.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    primary.start(now);
+    harmonic.start(now);
+    primary.stop(endTime);
+    harmonic.stop(endTime);
   };
 
   const playSuccessChime = () => {
@@ -174,6 +214,40 @@ const WebcamCapture: React.FC = () => {
     playTone(390, 220, 'triangle', 0.05);
     window.setTimeout(() => playTone(520, 260, 'sine', 0.05), 120);
     window.setTimeout(() => playTone(780, 340, 'sine', 0.05), 280);
+  };
+
+  const playMemeSceneAudio = async (scene: MemeScene) => {
+    stopMemePlayback();
+    audioContextRef.current?.resume().catch(() => undefined);
+
+    if (scene.audioSrc) {
+      const audio = new Audio(scene.audioSrc);
+      audio.preload = 'auto';
+      audio.volume = 0.72;
+      memeAudioRef.current = audio;
+
+      try {
+        await audio.play();
+        memeStopTimeoutRef.current = window.setTimeout(() => {
+          stopMemePlayback();
+        }, MEME_DURATION_MS);
+        return;
+      } catch {
+        memeAudioRef.current = null;
+      }
+    }
+
+    playFallbackMemeSound(scene.expression);
+  };
+
+  const rotateMemeScene = () => {
+    if (completeRef.current || isFree) {
+      return;
+    }
+
+    const nextScene = getRandomMemeScene(activeMemeRef.current?.expression ?? undefined);
+    setActiveMeme(nextScene);
+    void playMemeSceneAudio(nextScene);
   };
 
   const stopStreaming = () => {
@@ -198,22 +272,37 @@ const WebcamCapture: React.FC = () => {
     audioContextRef.current = new AudioContextCtor();
     audioContextRef.current.resume().catch(() => undefined);
 
-    audioLoopRef.current = window.setInterval(() => {
-      if (!completeRef.current && !isFree) {
-        playLoopPulse();
-      }
-    }, 1400);
-
     return () => {
-      stopAudioLoop();
+      stopMemeRotation();
       if (audioContextRef.current) {
         audioContextRef.current.close().catch(() => undefined);
         audioContextRef.current = null;
       }
     };
-  }, [isFree]);
+  }, []);
 
-  const drawMemeCanvas = () => {
+  useEffect(() => {
+    if (isFree || isComplete) {
+      stopMemeRotation();
+      return;
+    }
+
+    rotateMemeScene();
+    memeRotationRef.current = window.setInterval(rotateMemeScene, MEME_DURATION_MS);
+
+    return () => {
+      stopMemeRotation();
+    };
+  }, [isFree, isComplete]);
+
+  const renderMemeCanvas = (
+    scene: MemeScene | null,
+    image: CanvasImageSource | null,
+    target: EmojiName,
+    detectedEmoji: string,
+    finished: boolean,
+    captureCount: number,
+  ) => {
     const canvas = memeCanvasRef.current;
     if (!canvas) {
       return;
@@ -224,48 +313,94 @@ const WebcamCapture: React.FC = () => {
       return;
     }
 
-    const focusEmoji = isComplete ? captures[captures.length - 1]?.expression ?? currentTarget : currentTarget;
-    const [colorA, colorB, colorC] = getMemePalette(focusEmoji);
+    const focusExpression = scene?.expression ?? 'surprise';
+    const [colorA, colorB, colorC] = getMemePalette(focusExpression);
     const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
     gradient.addColorStop(0, colorA);
-    gradient.addColorStop(0.5, colorB);
+    gradient.addColorStop(0.55, colorB);
     gradient.addColorStop(1, colorC);
 
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.fillStyle = gradient;
     context.fillRect(0, 0, canvas.width, canvas.height);
 
-    context.fillStyle = 'rgba(255, 255, 255, 0.14)';
-    context.beginPath();
-    context.arc(72, 68, 58, 0, Math.PI * 2);
-    context.fill();
-    context.beginPath();
-    context.arc(310, 220, 90, 0, Math.PI * 2);
-    context.fill();
+    context.fillStyle = 'rgba(10, 8, 12, 0.2)';
+    context.fillRect(18, 18, canvas.width - 36, canvas.height - 36);
 
-    context.fillStyle = '#111111';
-    context.font = '900 26px Impact, Haettenschweiler, Arial Narrow Bold, sans-serif';
+    if (image) {
+      const frameX = 28;
+      const frameY = 58;
+      const frameWidth = canvas.width - 56;
+      const frameHeight = 170;
+      context.save();
+      context.beginPath();
+      context.roundRect(frameX, frameY, frameWidth, frameHeight, 24);
+      context.clip();
+      context.drawImage(image, frameX, frameY, frameWidth, frameHeight);
+      context.restore();
+    } else {
+      context.fillStyle = 'rgba(255, 255, 255, 0.12)';
+      context.beginPath();
+      context.roundRect(28, 58, canvas.width - 56, 170, 24);
+      context.fill();
+      context.fillStyle = '#fff8dc';
+      context.font = '900 86px "Trebuchet MS", sans-serif';
+      context.textAlign = 'center';
+      context.fillText(getEmojiChar(focusExpression), canvas.width / 2, 170);
+    }
+
+    context.fillStyle = '#fff8ea';
     context.textAlign = 'center';
-    context.fillText('MAKE THE JUDGE BELIEVE YOU', canvas.width / 2, 44);
-
-    context.fillStyle = '#fff8dc';
-    context.font = '900 110px "Trebuchet MS", sans-serif';
-    context.fillText(getEmojiChar(focusEmoji), canvas.width / 2, 180);
-
-    context.fillStyle = '#111111';
     context.font = '900 24px Impact, Haettenschweiler, Arial Narrow Bold, sans-serif';
-    context.fillText(`TARGET: ${focusEmoji.toUpperCase()}`, canvas.width / 2, 234);
+    context.fillText(`NOW PLAYING: ${getMemeTitle(focusExpression).toUpperCase()}`, canvas.width / 2, 38);
 
-    context.font = '700 18px "Trebuchet MS", sans-serif';
-    const footer = isComplete
-      ? `CAPTURED ${captures.length} / ${MAX_SCORE} EXPRESSIONS`
-      : `DETECTED: ${currentEmoji.toUpperCase()}`;
-    context.fillText(footer, canvas.width / 2, 272);
+    context.font = '700 17px "Trebuchet MS", sans-serif';
+    context.fillText(`TARGET ${getEmojiChar(target)} ${getEmojiLabel(target).toUpperCase()}`, canvas.width / 2, 256);
+    context.fillText(`DETECTED ${getEmojiChar(detectedEmoji)} ${getEmojiLabel(detectedEmoji).toUpperCase()}`, canvas.width / 2, 280);
+
+    context.textAlign = 'left';
+    context.fillStyle = 'rgba(17, 17, 17, 0.76)';
+    context.beginPath();
+    context.roundRect(28, 238, 130, 34, 14);
+    context.fill();
+    context.fillStyle = '#fff8ea';
+    context.font = '700 14px "Trebuchet MS", sans-serif';
+    context.fillText(`Cycle ${finished ? 'locked' : '5 sec'}`, 40, 260);
+
+    context.textAlign = 'right';
+    context.fillStyle = 'rgba(17, 17, 17, 0.76)';
+    context.beginPath();
+    context.roundRect(canvas.width - 168, 238, 140, 34, 14);
+    context.fill();
+    context.fillStyle = '#fff8ea';
+    context.fillText(`Captured ${captureCount} / ${MAX_SCORE}`, canvas.width - 40, 260);
   };
 
   useEffect(() => {
-    drawMemeCanvas();
-  }, [currentEmoji, currentTarget, captures, isComplete]);
+    let isCancelled = false;
+
+    if (!activeMeme) {
+      renderMemeCanvas(null, null, currentTarget, currentEmoji, isComplete, captures.length);
+      return () => undefined;
+    }
+
+    const image = new Image();
+    image.onload = () => {
+      if (!isCancelled) {
+        renderMemeCanvas(activeMeme, image, currentTarget, currentEmoji, isComplete, captures.length);
+      }
+    };
+    image.onerror = () => {
+      if (!isCancelled) {
+        renderMemeCanvas(activeMeme, null, currentTarget, currentEmoji, isComplete, captures.length);
+      }
+    };
+    image.src = activeMeme.imageSrc;
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeMeme, captures.length, currentEmoji, currentTarget, isComplete]);
 
   const captureFrame = () => {
     if (!videoRef.current || !frameCanvasRef.current) {
@@ -334,7 +469,7 @@ const WebcamCapture: React.FC = () => {
       if (nextScore >= MAX_SCORE) {
         setStatusMessage('Judgment complete. Reviewing your performance...');
         setIsComplete(true);
-        stopAudioLoop();
+        stopMemeRotation();
         stopStreaming();
         playCompletionChime();
         return;
@@ -480,7 +615,7 @@ const WebcamCapture: React.FC = () => {
   };
 
   const handleQuit = async () => {
-    stopAudioLoop();
+    stopMemeRotation();
 
     if (document.fullscreenElement && document.exitFullscreen) {
       await document.exitFullscreen().catch(() => undefined);
@@ -510,6 +645,11 @@ const WebcamCapture: React.FC = () => {
     { label: 'Confusion', value: `${Math.round(whyMeter.confusion)}%` },
     { label: 'Existential Dread', value: `${Math.round(whyMeter.dread)}%` },
     { label: 'Detected Face', value: `${getEmojiChar(currentEmoji)} ${getEmojiLabel(currentEmoji)}` },
+    { label: 'Meme Cycle', value: activeMeme ? getMemeTitle(activeMeme.expression) : 'Loading…' },
+    {
+      label: 'Meme Audio',
+      value: activeMeme?.audioSrc ? 'Custom file' : 'Fallback synth until files are added',
+    },
   ];
 
   if (isFree) {
@@ -626,7 +766,7 @@ const WebcamCapture: React.FC = () => {
           <section className="panel-section">
             <div className="panel-heading">
               <h3>Meme Board</h3>
-              <p>The target and detected face stay visible here.</p>
+              <p>Every 5 seconds the board swaps to a random meme image and matching sound.</p>
             </div>
             <canvas ref={memeCanvasRef} width={420} height={300} className="meme-canvas" />
           </section>
@@ -637,23 +777,23 @@ const WebcamCapture: React.FC = () => {
               <p>Captured matches from each completed step.</p>
             </div>
             <div className="capture-strip">
-            {captures.length === 0 ? (
-              <p>No approved face captures yet.</p>
-            ) : (
-              captures.map((capture, index) => (
-                <figure key={`${capture.expression}-${index}`} className="capture-tile">
-                  <img
-                    className="capture-thumb"
-                    src={capture.imageUrl}
-                    alt={`${capture.expression} thumbnail ${index + 1}`}
-                  />
-                  <figcaption>{capture.emojiChar} {getEmojiLabel(capture.expression)}</figcaption>
-                </figure>
-              ))
-            )}
+              {captures.length === 0 ? (
+                <p>No approved face captures yet.</p>
+              ) : (
+                captures.map((capture, index) => (
+                  <figure key={`${capture.expression}-${index}`} className="capture-tile">
+                    <img
+                      className="capture-thumb"
+                      src={capture.imageUrl}
+                      alt={`${capture.expression} thumbnail ${index + 1}`}
+                    />
+                    <figcaption>{capture.emojiChar} {getEmojiLabel(capture.expression)}</figcaption>
+                  </figure>
+                ))
+              )}
             </div>
           </section>
-          </div>
+        </div>
 
         <canvas ref={frameCanvasRef} width={320} height={240} style={{ display: 'none' }} />
 
