@@ -88,6 +88,7 @@ const WebcamCapture: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const memeAudioRef = useRef<HTMLAudioElement | null>(null);
   const activeMemeRef = useRef<MemeScene | null>(null);
+  const fallbackSoundTimerRef = useRef<number | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [currentTarget, setCurrentTarget] = useState<EmojiName>('happy');
@@ -118,10 +119,31 @@ const WebcamCapture: React.FC = () => {
   }, [activeMeme]);
 
   const stopMemePlayback = () => {
+    if (fallbackSoundTimerRef.current) {
+      window.clearTimeout(fallbackSoundTimerRef.current);
+      fallbackSoundTimerRef.current = null;
+    }
+
     if (memeAudioRef.current) {
       memeAudioRef.current.pause();
       memeAudioRef.current.currentTime = 0;
       memeAudioRef.current = null;
+    }
+  };
+
+  const ensureAudioContextReady = async () => {
+    if (!audioContextRef.current) {
+      return false;
+    }
+
+    try {
+      if (audioContextRef.current.state !== 'running') {
+        await audioContextRef.current.resume();
+      }
+
+      return audioContextRef.current.state === 'running';
+    } catch {
+      return false;
     }
   };
 
@@ -185,6 +207,10 @@ const WebcamCapture: React.FC = () => {
     harmonic.start(now);
     primary.stop(endTime);
     harmonic.stop(endTime);
+
+    fallbackSoundTimerRef.current = window.setTimeout(() => {
+      playFallbackMemeSound(expression, durationMs);
+    }, Math.max(500, durationMs - 120));
   };
 
   const playSuccessChime = () => {
@@ -200,12 +226,13 @@ const WebcamCapture: React.FC = () => {
 
   const playMemeSceneAudio = async (scene: MemeScene) => {
     stopMemePlayback();
-    audioContextRef.current?.resume().catch(() => undefined);
+    const isAudioReady = await ensureAudioContextReady();
 
     if (scene.audioSrc) {
       const audio = new Audio(scene.audioSrc);
       audio.preload = 'auto';
       audio.volume = 0.72;
+      audio.loop = true;
       memeAudioRef.current = audio;
 
       try {
@@ -216,7 +243,9 @@ const WebcamCapture: React.FC = () => {
       }
     }
 
-    playFallbackMemeSound(scene.expression);
+    if (isAudioReady) {
+      playFallbackMemeSound(scene.expression);
+    }
   };
 
   const syncMemeToExpression = (emoji: string) => {
@@ -230,7 +259,6 @@ const WebcamCapture: React.FC = () => {
 
     const nextScene = getMemeSceneForExpression(emoji, activeMemeRef.current?.imageSrc);
     setActiveMeme(nextScene);
-    void playMemeSceneAudio(nextScene);
   };
 
   const stopStreaming = () => {
@@ -263,6 +291,35 @@ const WebcamCapture: React.FC = () => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (isFree || completeRef.current) {
+      return;
+    }
+
+    if (!isMemeExpression(currentTarget)) {
+      return;
+    }
+
+    try {
+      const scene = getMemeSceneForExpression(currentTarget, activeMemeRef.current?.imageSrc);
+      setActiveMeme(scene);
+    } catch {
+      // Keep running if local meme assets are incomplete.
+    }
+  }, [currentTarget, isFree]);
+
+  useEffect(() => {
+    if (!activeMeme || isFree || completeRef.current) {
+      return;
+    }
+
+    void playMemeSceneAudio(activeMeme);
+
+    return () => {
+      stopMemePlayback();
+    };
+  }, [activeMeme, isFree]);
 
   const renderMemeCanvas = (
     scene: MemeScene | null,
@@ -578,7 +635,10 @@ const WebcamCapture: React.FC = () => {
     try {
       await document.documentElement.requestFullscreen();
       setIsTrapped(false);
-      audioContextRef.current?.resume().catch(() => undefined);
+      await ensureAudioContextReady();
+      if (activeMemeRef.current) {
+        void playMemeSceneAudio(activeMemeRef.current);
+      }
     } catch {
       setError('Could not restore fullscreen mode.');
     }

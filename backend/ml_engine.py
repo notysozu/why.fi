@@ -168,13 +168,13 @@ class FaceAnalyzer:
             and mouth_open < 0.28
         )
         is_angry = (
-            brow_raise < 0.075
-            and brow_distance < 0.34
-            and brow_asymmetry < 0.018
-            and eye_open < 0.245
-            and mouth_open < 0.18
-            and corner_drop > -0.01
-            and mouth_tension > 1.65
+            brow_raise < 0.09
+            and brow_distance < 0.4
+            and brow_asymmetry < 0.028
+            and eye_open < 0.285
+            and mouth_open < 0.24
+            and corner_drop > -0.028
+            and mouth_tension > 1.15
         )
         is_sad = (
             corner_drop > 0.004
