@@ -161,6 +161,12 @@ For production or preview builds on Vercel, `VITE_API_URL` should point to your 
 - Tooling: ESLint, GitHub Actions
 - Deployment: Vercel for frontend, Fly.io for backend
 
+## Testing
+
+- Backend smoke tests: `python -m pip install -r backend/requirements-test.txt && pytest`
+- Frontend lint: `cd frontend && npm run lint`
+- Frontend build: `cd frontend && npm run build`
+
 ## Backend behavior
 
 [backend/main.py](/backend/main.py) now:

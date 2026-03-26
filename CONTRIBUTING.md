@@ -24,6 +24,8 @@ Thanks for contributing. This project mixes a Vite/React frontend with a FastAPI
 
 ## Tests
 
+- Install backend test dependencies with:
+  `python -m pip install -r backend/requirements-test.txt`
 - Run backend tests with `pytest`.
 - Run frontend linting with `npm run lint`.
 - Run a production frontend build with `npm run build`.
