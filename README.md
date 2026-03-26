@@ -13,7 +13,7 @@ This repo is now configured to deploy as one Vercel project:
 
 The repo-level Vercel config lives in [vercel.json](/home/sonukumar/Documents/projects/why.fi/vercel.json).
 Python version is pinned with [.python-version](/home/sonukumar/Documents/projects/why.fi/.python-version).
-Python dependencies are exposed from the root [requirements.txt](/home/sonukumar/Documents/projects/why.fi/requirements.txt) so Vercel can install the backend requirements from [backend/requirements.txt](/home/sonukumar/Documents/projects/why.fi/backend/requirements.txt).
+Python dependencies are duplicated in the root [requirements.txt](/home/sonukumar/Documents/projects/why.fi/requirements.txt) so Vercel can install the backend runtime cleanly.
 
 ## How to deploy on Vercel
 
