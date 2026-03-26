@@ -8,7 +8,7 @@ This repo is now configured to deploy as one Vercel project:
 
 - The Vite frontend is built from [frontend](/home/sonukumar/Documents/projects/why.fi/frontend).
 - The built site is served from `frontend/dist`.
-- The FastAPI backend in [backend/main.py](/home/sonukumar/Documents/projects/why.fi/backend/main.py) is exposed under `/api/*`.
+- The Vercel Python entrypoint lives at [api/index.py](/home/sonukumar/Documents/projects/why.fi/api/index.py), which imports the FastAPI app from [backend/main.py](/home/sonukumar/Documents/projects/why.fi/backend/main.py).
 - The frontend uses same-origin API paths in production, so the browser talks to the backend through the same Vercel domain.
 
 The repo-level Vercel config lives in [vercel.json](/home/sonukumar/Documents/projects/why.fi/vercel.json).
