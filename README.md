@@ -1,6 +1,23 @@
 # why.fi
 
-why.fi is a webcam-based emotion-mimic game with a Vite/React frontend in [frontend](/frontend) and a FastAPI backend in [backend](/backend).
+why.fi is a webcam-based emotion-mimic game with a chaotic, pixel-art internet aesthetic. Players are given a target expression and have to satisfy the machine by matching it live on camera while the system scores the attempt in real time.
+
+## Purpose
+
+The project exists to turn realtime facial-expression detection into a playful web game. It combines a meme-heavy front end with a webcam-driven FastAPI backend so the experience feels closer to an absurd arcade cabinet than a utility app.
+
+## Features
+
+- realtime webcam analysis over WebSockets
+- expression targets for `happy`, `sad`, and `surprise`
+- automatic capture snapshots with per-round scoring
+- meme-driven audio and visual feedback
+- Vite + React frontend deployable on Vercel
+- FastAPI + MediaPipe backend deployable on Fly.io
+
+## Project status
+
+Active prototype. Core gameplay exists, deployment paths are documented, and the repository now includes baseline testing, CI, and maintainer docs.
 
 ## One-command install
 
@@ -84,6 +101,18 @@ cd frontend
 npm run dev
 ```
 
+## Usage
+
+1. Start the backend and frontend locally.
+2. Open the frontend in a desktop browser with webcam access enabled.
+3. Match the target expression shown on screen.
+4. Let the game capture rounds automatically and react to your performance.
+
+Screenshot placeholders:
+
+- `docs/screenshots/gameplay.png`
+- `docs/screenshots/results.png`
+
 ## Deployment split
 
 This repo is now configured for:
@@ -125,6 +154,13 @@ Run the frontend and backend separately during development:
 
 For production or preview builds on Vercel, `VITE_API_URL` should point to your Fly backend.
 
+## Tech stack
+
+- Frontend: React 19, TypeScript, Vite
+- Backend: FastAPI, MediaPipe, OpenCV, NumPy
+- Tooling: ESLint, GitHub Actions
+- Deployment: Vercel for frontend, Fly.io for backend
+
 ## Backend behavior
 
 [backend/main.py](/backend/main.py) now:
@@ -133,6 +169,21 @@ For production or preview builds on Vercel, `VITE_API_URL` should point to your 
 - serves HTTP endpoints like `/health` and `/captures`
 - returns capture image URLs from `/images/...`
 - allows CORS from localhost and your configured production domain
+
+## Additional docs
+
+- [CONTRIBUTING.md](/CONTRIBUTING.md)
+- [SECURITY.md](/SECURITY.md)
+- [CODE_OF_CONDUCT.md](/CODE_OF_CONDUCT.md)
+- [LICENSE](/LICENSE)
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](/CONTRIBUTING.md) before opening a pull request, and use Conventional Commits for new changes.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](/LICENSE).
 
 ## Important caveat
 
