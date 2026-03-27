@@ -29,3 +29,7 @@ if [ -d "backend" ]; then
     pip install -r requirements-test.txt || true
     cd ..
 fi
+echo "→ Configuring environment..."
+if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+    cp .env.example .env
+fi
