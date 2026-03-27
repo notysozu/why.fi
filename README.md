@@ -4,9 +4,8 @@
 
 ![License](https://img.shields.io/github/license/notysozu/why.fi) ![Frontend](https://img.shields.io/badge/frontend-React%20%7C%20TypeScript-blue) ![Backend](https://img.shields.io/badge/backend-Python%20%7C%20FastAPI-green)
 
-<!-- AUDIT: Rewrite project overview for clarity and positioning (What, Who, Why, How) -->
-## Project Overview
-why.fi is a modern fullstack web application. The frontend is built with React, TypeScript, and Vite. The backend is powered by Python (FastAPI/ML Engine), providing robust APIs and machine learning capabilities.
+## Overview
+why.fi is a fullstack web application that delivers robust APIs and machine learning capabilities through a seamless user interface. Designed for developers and data scientists, it solves the complexity of integrating advanced ML models into production-ready web apps. By coupling a high-performance FastAPI backend with a reactive React frontend, why.fi provides an end-to-end framework that accelerates intelligent application development.
 
 <!-- AUDIT: Missing Features section -->
 <!-- AUDIT: Missing Prerequisites section -->
