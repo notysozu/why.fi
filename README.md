@@ -7,7 +7,11 @@
 ## Overview
 why.fi is a fullstack web application that delivers robust APIs and machine learning capabilities through a seamless user interface. Designed for developers and data scientists, it solves the complexity of integrating advanced ML models into production-ready web apps. By coupling a high-performance FastAPI backend with a reactive React frontend, why.fi provides an end-to-end framework that accelerates intelligent application development.
 
-<!-- AUDIT: Missing Features section -->
+## Features
+- **Fluid User Interfaces**: Delivers snappy, interactive frontends using React 19 and Vite
+- **Intelligent Backends**: Exposes robust machine learning inference endpoints via FastAPI
+- **Reliable Code Quality**: Ensures stability with integrated ESLint and comprehensive Pytest suites
+- **Streamlined Deployments**: Simplifies environment setup through pre-configured Docker containerization
 <!-- AUDIT: Missing Prerequisites section -->
 
 ## Tech Stack
