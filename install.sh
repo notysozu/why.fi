@@ -33,3 +33,5 @@ echo "→ Configuring environment..."
 if [ ! -f ".env" ] && [ -f ".env.example" ]; then
     cp .env.example .env
 fi
+echo "→ Building project..."
+if [ -d "frontend" ]; then cd frontend && npm run build && cd ..; fi
