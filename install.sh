@@ -19,3 +19,13 @@ if [ ! -d "why.fi" ] && [ ! -d "frontend" ]; then
     git clone https://github.com/notysozu/why.fi.git
     cd why.fi
 fi
+echo "→ Setting up project dependencies..."
+if [ -d "frontend" ]; then cd frontend && npm install && cd ..; fi
+if [ -d "backend" ]; then
+    cd backend
+    python3 -m venv venv
+    source venv/bin/activate || true
+    pip install -r requirements.txt || true
+    pip install -r requirements-test.txt || true
+    cd ..
+fi
