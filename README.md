@@ -1,5 +1,8 @@
-<!-- AUDIT: Needs tagline and badges -->
 # why.fi
+
+> A modern fullstack web application powering robust APIs and machine learning capabilities.
+
+![License](https://img.shields.io/github/license/notysozu/why.fi) ![Frontend](https://img.shields.io/badge/frontend-React%20%7C%20TypeScript-blue) ![Backend](https://img.shields.io/badge/backend-Python%20%7C%20FastAPI-green)
 
 <!-- AUDIT: Rewrite project overview for clarity and positioning (What, Who, Why, How) -->
 ## Project Overview
