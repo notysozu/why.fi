@@ -36,7 +36,7 @@ why.fi is a fullstack web application that delivers robust APIs and machine lear
 
 ### Installation
 
-1. **Clone the repository:**
+\n#### Quick Install (macOS/Linux)\n```bash\ncurl -fsSL https://raw.githubusercontent.com/notysozu/why.fi/main/install.sh | bash\n```\n1. **Clone the repository:**
    ```bash
    git clone https://github.com/notysozu/why.fi.git
    cd why.fi
