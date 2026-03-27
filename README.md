@@ -233,5 +233,9 @@ why.fi/
 - **Cursor**: The IDE will automatically read and enforce `.cursorrules` during code generation and editing.
 - **Copilot Workspace**: GitHub will parse `.github/copilot-instructions.md` to format pull requests and guide code changes.
 
-<!-- AUDIT: Missing Contributing guidelines -->
+## Contributing
+
+We welcome your contributions! Please see our [Contributing Guide](CONTRIBUTING.md) to learn how to open an issue, submit a pull request, and adhere to our core coding standards.
+
+Please ensure that you read and uphold our [Code of Conduct](CODE_OF_CONDUCT.md) during your involvement with the project.
 <!-- AUDIT: Missing License section -->
