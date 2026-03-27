@@ -246,3 +246,4 @@ Please ensure that you read and uphold our [Code of Conduct](CODE_OF_CONDUCT.md)
 ## License
 
 This project uses the MIT License. See [LICENSE](LICENSE) for details.
+\n\n### Troubleshooting\nIf you experience issues, ensure permissions are correct and ports 3000/8000 are open.\n
