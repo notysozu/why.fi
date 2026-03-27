@@ -12,6 +12,7 @@ why.fi is a fullstack web application that delivers robust APIs and machine lear
 - **Intelligent Backends**: Exposes robust machine learning inference endpoints via FastAPI
 - **Reliable Code Quality**: Ensures stability with integrated ESLint and comprehensive Pytest suites
 - **Streamlined Deployments**: Simplifies environment setup through pre-configured Docker containerization
+
 ## Prerequisites
 - [Node.js](https://nodejs.org/) ≥ 20.0
 - [Python](https://www.python.org/) ≥ 3.10
@@ -174,6 +175,7 @@ You can quickly test the health of the backend directly via `curl`:
 curl -X GET "http://localhost:8000/api/health" \
      -H "Accept: application/json"
 ```
+
 ## Configuration
 
 To customize your environment, copy `.env.example` to `.env` and configure the following variables:
@@ -197,6 +199,7 @@ To customize your environment, copy `.env.example` to `.env` and configure the f
 | `SENDGRID_API_KEY` | *none* | API key for sending transactional emails |
 | `OPENAI_API_KEY` | *none* | API key for OpenAI integrations |
 | `ANTHROPIC_API_KEY` | *none* | API key for Anthropic Claude integrations |
+
 ## Project Structure
 
 ```text
@@ -206,6 +209,7 @@ why.fi/
 ├── frontend/       # React/Vite user interface
 └── tests/          # Integration and end-to-end tests
 ```
+
 ## Roadmap & Status
 
 **Current Status:** `Beta` — Development is active, but core APIs may experience minor breaking changes.
@@ -238,6 +242,7 @@ why.fi/
 We welcome your contributions! Please see our [Contributing Guide](CONTRIBUTING.md) to learn how to open an issue, submit a pull request, and adhere to our core coding standards.
 
 Please ensure that you read and uphold our [Code of Conduct](CODE_OF_CONDUCT.md) during your involvement with the project.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
